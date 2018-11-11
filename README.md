@@ -1,6 +1,8 @@
 # containment-patterns
-Containment pattern match-expander for racket/match
+containment pattern match-expander for racket/match
 
+
+    ⋱ CONTAINMENT PATTERNS ⋱
 
     this library implements several match-expanders which
     can be required seperately and used with racket/match
@@ -17,3 +19,12 @@ Containment pattern match-expander for racket/match
     the pattern (⋱ <context-name> <pattern>) binds a procedure
     to <context-name> and a list of <matches> to <pattern>
     satisfying (equal? (apply <context> <matches>) target)
+
+    
+    EXAMPLE
+
+    (check-equal?
+        (match '(0 0 (0 (0 0 (▹ 1)) 0 0))
+           [(⋱ context `(▹ ,a))
+            (⋱ context `(▹ ,(add1 a))])
+        '(0 0 (0 (0 0 (▹ 2)) 0 0))
