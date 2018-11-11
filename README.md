@@ -12,8 +12,9 @@ containment pattern match-expander for racket/match
     in structured editing and algebraic stepper prototypes
 
     ⋱ , ⋱+ , ⋱1  are match-expanders which implement
-    containment patterns. these descend into an s-expressions
+    containment patterns. these descend into s-expressions
     to capture both matches and their multi-holed context
+    
     an n-holed context is captured as a normal n-ary procedure
 
     the pattern (⋱ <context-name> <pattern>) binds a procedure
