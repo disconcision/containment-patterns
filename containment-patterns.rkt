@@ -317,7 +317,7 @@
   )
 
 
-(define/memo (multi-containment match? xs (until? (λ (x) #f)))
+(define/memo (multi-containment-old match? xs (until? (λ (x) #f)))
   ; this returns a list of two elements
   ; the first element is the multi-holed context as a fn
   ; the second is a list of the contents of those holes
@@ -347,49 +347,114 @@
            new-matches)]))
 
 
-(define/memo (first-containment match? xs (until? (λ (x) #f)))
-    ; this returns a list of two elements
-    ; the first element is a one-holed context as a fn
-    ; the second is a one-element list of the content of that hole
-    ; this currently is just a gloss for mult-containment
-    ; it could be implemented more efficiently separately
-    (match-define `(,context ,matches)
-      (multi-containment match? xs until?))
-    (match matches
-      [`() `(,context ,matches)]
-      [`(,a ,as ...) `(,(λ (x) (apply context x as)) (,a))]))
+(define/memo (first-containment-old match? xs (until? (λ (x) #f)))
+  ; this returns a list of two elements
+  ; the first element is a one-holed context as a fn
+  ; the second is a one-element list of the content of that hole
+  ; this currently is just a gloss for mult-containment
+  ; it could be implemented more efficiently separately
+  (match-define `(,context ,matches)
+    (multi-containment match? xs until?))
+  (match matches
+    [`() `(,context ,matches)]
+    [`(,a ,as ...) `(,(λ (x) (apply context x as)) (,a))]))
 
 
 (require racket/control)
-(define-syntax-rule (let/comp k body ...)
-  (call/comp (λ (k) body ...)))
-
 (define-struct ppair (cont res))
 
-(define (first-containment-new match? xs (until? (λ (x) #f)))
+(define (first-containment match? xs (until? (λ (x) #f)))
+  (define pp (containment-comp match? xs until?))
+  (define matches (get-cont-insides pp))
+  (if (empty? matches)
+      `(,(thunk xs)
+        ())
+      `(,(λ (x) (apply-cont pp (list* x (rest matches))))
+        (,(first matches)))))
+
+(define (multi-containment match? xs (until? (λ (x) #f)))
+  (define pp (containment-comp match? xs until?))
+  (define matches (get-cont-insides pp))
+  (if (empty? matches)
+      `(,(thunk xs)
+        ())
+      `(,(λ x (apply-cont pp x))
+        ,matches)))
+
+(define (apply-cont pp ls)
+  (define (loop pp ls acc)
+    (match pp
+      [(ppair c r)
+       (define guy (prompt (c (first ls))))
+       (loop guy (rest ls) acc)]
+      [_ pp]))
+  (loop pp ls #f))
+
+(define (get-cont-insides pp)
+  (define (loop pp acc)
+    (match pp
+      [(ppair c r)
+       (define guy (prompt (c 666)))
+       (loop guy (list* r acc))]
+      [_ acc]))
+  (reverse (loop pp '())))
+
+(define (containment-comp match? xs (until? (λ (x) #f)))
   (define (rec x)
     (cond
       [(match? x) (call/comp (λ (hole) (abort (ppair hole x))))]
       [(until? x) x]
       [(list? x) (map rec x)]
       [else x]))
-  (define initial-candidate (prompt (rec xs)))
-  (match initial-candidate
-    [(ppair c r)
-     (define (looper C R)
-       (define trial (prompt (C R)))
-       (match trial
-         [(ppair cc rr)
-          (looper cc R)]
-         [_ (ppair C R)]))
-     (match-define (ppair ccc rrr)
-       (looper c r))
-     (list ccc (list rrr))]
-    [_ (list (thunk initial-candidate) (list))]))
-;this is being backwards
-#; (match `(0 (1 zap) (1 2) 3)
-    [(⋱ c `(1 ,a)) (⋱ c `(666 ,a))])
-#;'(0 (1 zap) (666 2) 3)
+  (prompt (rec xs)))
+
+(define results '())
+#;(define (containment-comp match? xs (until? (λ (x) #f)))
+  (set! results '())
+  (define (rec x)
+    (cond
+      [(match? x) (set! results (cons x results))
+                  (call/comp (λ (hole) (abort hole)))]
+      [(until? x) x]
+      [(list? x) (map rec x)]
+      [else x]))
+  (define continuation
+    (prompt (rec xs)))
+  (define matches results)
+  
+  (println `(matches ,matches))
+  
+  (define (apply-cont-local pp ls)
+    (define (loop pp ls)
+      (match pp
+        [(? continuation? c)
+         (define guy (prompt (c (first ls))))
+         (loop guy (rest ls))]
+        [_ pp]))
+    (loop pp ls))
+  
+  (list (curry apply-cont-local continuation)
+        matches))
+
+#;(define (first-containment match? xs (until? (λ (x) #f)))
+  (match-define (list context matches)
+    (containment-comp match? xs until?))
+  (println `(first-virtual-matches ,matches))
+  (if (empty? matches)
+      `(,(thunk xs)
+        ())
+      `(,(λ (x) (context (list* x (rest matches))))
+        (,(first matches)))))
+
+#;(define (multi-containment match? xs (until? (λ (x) #f)))
+  (match-define (list context matches)
+    (containment-comp match? xs until?))
+  (println `(multi-matches ,matches))
+  (if (empty? matches)
+      `(,(thunk xs)
+        ())
+      `(,(λ x (context x))
+        ,matches)))
 
 (define (multi-split ls lengths)
   ; splits list ls into segments of lengths lengths
