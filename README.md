@@ -17,7 +17,7 @@ I implemented containment patterns to write concise updates on nested structures
 
 ### ⋱ How
 
-Technically: an *n-holed context* is a captured composable continuation which can be used in a pattern template as a normal n-ary procedure. These continuations are captured as the pattern-matcher left-to-right preorder-traverses the target looking for matches. 
+Technically: an *n-holed context* is a captured composable continuation which can be used in a match template as a normal n-ary procedure. These continuations are captured as the pattern-matcher left-to-right preorder-traverses the target looking for matches. 
 
 Explicitly: The pattern `(⋱ <context-name> <pattern>)` binds a procedure to `<context-name>` and a `<match>` to `<pattern>` satisfying `(equal? (<context> <matches>) target)`. `⋱+` is similar, but it binds a list of all matches instead of just the first result, and `⋱1` insists that the match should be unique.
 
