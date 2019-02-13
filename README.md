@@ -11,26 +11,21 @@ This library implements several match-expanders which can be used anywhere racke
 
 ### ⋱ Why
 
-Containment patterns are sugar to concisely perform updates on highly nested structures for syntax rewriting purposes in structured editing and algebraic stepper prototypes. These are part of [fructerm](https://github.com/disconcision/fructerm) and see [fructure](https://github.com/disconcision/fructure) for an actual use case, or for something simpler, [this toy stepper](https://github.com/disconcision/racketlab/blob/master/choice-stepper.rkt).
+I implemented containment patterns to write concise updates on nested structures for syntax-rewriting purposes in structured-editing and algebraic-stepper prototypes. See [fructure](https://github.com/disconcision/fructure) for an actual use case, or for something simpler, [this toy stepper](https://github.com/disconcision/racketlab/blob/master/choice-stepper.rkt). These are also integrated into [fructerm](https://github.com/disconcision/fructerm).
 
 
 ### ⋱ How
 
-Technically, an n-holed context is a captured composable continuation which can be used in a pattern template as a normal n-ary procedure. While it is really just a function, you can also use ⋱ in the template for symmetry (see example below).
+Technically: an *n-holed context* is a captured composable continuation which can be used in a pattern template as a normal n-ary procedure. These continuations are captured as the pattern-matcher left-to-right preorder-traverses the target looking for matches. While the captured context is really just a function which can be applied normally, you can (optionally) use ⋱ in the template as well for symmetry (see example below).
 
-The pattern `(⋱ <context-name> <pattern>)` binds a procedure to `<context-name>` and a `<match>` to`<pattern>` satisfying `(equal? (<context> <matches>) target)`. `⋱+` is similar, but it binds a list of all matches instead of just the first result, and `⋱1` insists that the match should be unique.
-
-
-### ⋱ WTF is ⋱
-
-To insert a `⋱` in Dr. Racket, type `\ddo` (diagonal dots) and then press `ctrl`+`\`.
+Explictly: The pattern `(⋱ <context-name> <pattern>)` binds a procedure to `<context-name>` and a `<match>` to `<pattern>` satisfying `(equal? (<context> <matches>) target)`. `⋱+` is similar, but it binds a list of all matches instead of just the first result, and `⋱1` insists that the match should be unique.
 
 
-### ⋱ Installation Instructions
+### ⋱ Installation and Usage Instructions
 
-`raco pkg install git://github.com/disconcision/containment-patterns`
-
-
+- Execute `raco pkg install git://github.com/disconcision/containment-patterns`
+- Add `(require containment-patterns)`
+- Insert a `⋱` in Dr. Racket by typing `\ddo` (diagonal dots) and then pressing `alt`+`\`
 
 
 ### ⋱ Usage Examples
