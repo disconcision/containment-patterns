@@ -6,6 +6,8 @@
 
 This library implements several match-expanders which can be used anywhere racket/match pattern-matching is available. `⋱` , `⋱+` , and `⋱1`  are match-expanders which implement containment patterns. These descend into s-expressions to capture arbitarily deep matches and their multi-holed contexts.
 
+![Tangerine Nightmare](screenshots/screenshot.png)
+
 
 ### ⋱ Why
 
@@ -19,9 +21,16 @@ Technically, an n-holed context is a captured composable continuation which can 
 The pattern `(⋱ <context-name> <pattern>)` binds a procedure to `<context-name>` and a `<match>` to`<pattern>` satisfying `(equal? (<context> <matches>) target)`. `⋱+` is similar, but it binds a list of all matches instead of just the first result, and `⋱1` insists that the match should be unique.
 
 
+### ⋱ WTF is ⋱
+
+To insert a `⋱` in Dr. Racket, type `\ddo` (diagonal dots) and then press `ctrl`+`\`.
+
+
 ### ⋱ Installation Instructions
 
 `raco pkg install git://github.com/disconcision/containment-patterns`
+
+
 
 
 ### ⋱ Usage Examples

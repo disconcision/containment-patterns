@@ -362,13 +362,13 @@
   ; when a match is found, abort, returning a pair of the match found
   ; and the continuation up to the original delimiter. when this
   ; the returned continuation is invoked, the traversal will continue.
-  (define (rec x)
-    (cond
-      [(until? x) x]
-      [(match? x) (call/comp (λ (hole) (abort (cm-pair hole x))))]
-      [(list? x) (map rec x)]
-      [else x]))
-  (prompt (rec xs)))
+  (prompt
+   (let rec ([x xs])
+     (cond
+       [(until? x) x]
+       [(match? x) (call/comp (λ (hole) (abort (cm-pair hole x))))]
+       [(list? x) (map rec x)]
+       [else x]))))
 
 
 (define (apply-cont pair inserts)
