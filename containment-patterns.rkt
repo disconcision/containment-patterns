@@ -2,7 +2,7 @@
 
 ; andrew blinn 2018
 
-(require memoize)
+#; (require memoize)
 (provide ⋱ ⋱1 ⋱+)
 
 
@@ -268,18 +268,29 @@
 
    (multi-containment match? target) returns a pair
    of a procedure called <context> and a list of <matches>
-   such that (apply <context> <matches>) gives you back target
+   such that (apply <context> <matches>) reconstitutes target
+
+   (first-containment match? target) works similarly, except
+   that it returns at most one match
+
+   both of the above take an additional optional parameter, until?,
+   which is a predicate which, when triggered, ends that branch
+   of the traversal
+
+   CONTEXTS VIA COMPOSABLE CONTINUATIONS
 
    the general approach here is that we turn the internal pattern
    from above into a predicate called match?, and search for match?
-   hits in target in a left-to-right preorder traversal
+   hits in target in a left-to-right preorder traversal. the
+   traversal bottoms out both at atoms, and at lists which satisfy
+   the until? predicate
 
-   if the target is a hit, we return the identity function and
-   the target. if it's an atomic non-hit, we return a thunk with
-   value target and nothing. if it's a non-atomic non-hit, we
-   recursively map over it and 'horizontally compose' the child
-   procedures into a new procedure with as many holes/paramaters
-   as the sum of the children's
+   we return the 'context' around these matches within the target
+   by returning a delimited continutation which encompasses the
+   traversal up to the point of hitting the first match. this
+   continuation, when invoked, can be used to both continue the
+   traversal and to fill the 'holes' left by the matches 
+
 
 |#
 
@@ -317,163 +328,158 @@
   )
 
 
-(define/memo (multi-containment-old match? xs (until? (λ (x) #f)))
-  ; this returns a list of two elements
-  ; the first element is the multi-holed context as a fn
-  ; the second is a list of the contents of those holes
-  (cond
-    [(match? xs)
-     (list (λ (x) x) `(,xs))]
-    [(or (not (list? xs)) (until? xs))
-     (list (λ () xs) `())]
-    [else
-     (match-define `((,subcontexts ,submatches) ...)
-       (for/list ([x xs])
-         (multi-containment match? x until?)))
-     (define subcontext-arities
-       (map procedure-arity subcontexts))
-     (define (context-candidate . xs)
-       (for/list
-           ([subctx subcontexts]
-            [arg-list (multi-split xs subcontext-arities)])
-         (apply subctx arg-list)))
-     (define new-context
-       (procedure-reduce-arity
-        context-candidate
-        (apply + subcontext-arities)))
-     (define new-matches
-       (apply append submatches))
-     (list new-context
-           new-matches)]))
+(require racket/control)
+(define-struct cm-pair (a-continuation a-match))
 
-
-(define/memo (first-containment-old match? xs (until? (λ (x) #f)))
+(define (first-containment match? xs (until? (λ (x) #f)))
   ; this returns a list of two elements
   ; the first element is a one-holed context as a fn
   ; the second is a one-element list of the content of that hole
-  ; this currently is just a gloss for mult-containment
-  ; it could be implemented more efficiently separately
-  (match-define `(,context ,matches)
-    (multi-containment match? xs until?))
-  (match matches
-    [`() `(,context ,matches)]
-    [`(,a ,as ...) `(,(λ (x) (apply context x as)) (,a))]))
-
-
-(require racket/control)
-(define-struct ppair (cont res))
-
-(define (first-containment match? xs (until? (λ (x) #f)))
-  (define pp (containment-comp match? xs until?))
-  (define matches (get-cont-insides pp))
+  (define context (containment-comp match? xs until?))
+  (define matches (extract-matches context))
   (if (empty? matches)
       `(,(thunk xs)
         ())
-      `(,(λ (x) (apply-cont pp (list* x (rest matches))))
+      `(,(λ (x) (apply-cont context (list* x (rest matches))))
         (,(first matches)))))
 
+
 (define (multi-containment match? xs (until? (λ (x) #f)))
-  (define pp (containment-comp match? xs until?))
-  (define matches (get-cont-insides pp))
+  ; this returns a list of two elements
+  ; the first element is the multi-holed context as a fn
+  ; the second is a list of the contents of those holes
+  (define context (containment-comp match? xs until?))
+  (define matches (extract-matches context))
   (if (empty? matches)
-      `(,(thunk xs)
-        ())
-      `(,(λ x (apply-cont pp x))
+      `(,(thunk xs) ())
+      `(,(procedure-reduce-arity (λ x (apply-cont context x))
+                                 (length matches))
         ,matches)))
 
-(define (apply-cont pp ls)
-  (define (loop pp ls acc)
-    (match pp
-      [(ppair c r)
-       (define guy (prompt (c (first ls))))
-       (loop guy (rest ls) acc)]
-      [_ pp]))
-  (loop pp ls #f))
-
-(define (get-cont-insides pp)
-  (define (loop pp acc)
-    (match pp
-      [(ppair c r)
-       (define guy (prompt (c 666)))
-       (loop guy (list* r acc))]
-      [_ acc]))
-  (reverse (loop pp '())))
 
 (define (containment-comp match? xs (until? (λ (x) #f)))
+  ; delimit a continuation, then descend into xs looking for matches.
+  ; when a match is found, abort, returning a pair of the match found
+  ; and the continuation up to the original delimiter. when this
+  ; the returned continuation is invoked, the traversal will continue.
   (define (rec x)
     (cond
-      [(match? x) (call/comp (λ (hole) (abort (ppair hole x))))]
       [(until? x) x]
+      [(match? x) (call/comp (λ (hole) (abort (cm-pair hole x))))]
       [(list? x) (map rec x)]
       [else x]))
   (prompt (rec xs)))
 
-(define results '())
-#;(define (containment-comp match? xs (until? (λ (x) #f)))
-  (set! results '())
-  (define (rec x)
-    (cond
-      [(match? x) (set! results (cons x results))
-                  (call/comp (λ (hole) (abort hole)))]
-      [(until? x) x]
-      [(list? x) (map rec x)]
-      [else x]))
-  (define continuation
-    (prompt (rec xs)))
-  (define matches results)
-  
-  (println `(matches ,matches))
-  
-  (define (apply-cont-local pp ls)
-    (define (loop pp ls)
-      (match pp
-        [(? continuation? c)
-         (define guy (prompt (c (first ls))))
-         (loop guy (rest ls))]
-        [_ pp]))
-    (loop pp ls))
-  
-  (list (curry apply-cont-local continuation)
-        matches))
 
-#;(define (first-containment match? xs (until? (λ (x) #f)))
-  (match-define (list context matches)
-    (containment-comp match? xs until?))
-  (println `(first-virtual-matches ,matches))
-  (if (empty? matches)
-      `(,(thunk xs)
-        ())
-      `(,(λ (x) (context (list* x (rest matches))))
-        (,(first matches)))))
+(define (apply-cont pair inserts)
+  ; recursively walk the chain of continuation-match pairs,
+  ; replacing the holes left by the matches with the inserts
+  (let loop ([p pair] [i inserts])
+    (match p
+      [(cm-pair c r)
+       (loop (prompt (c (first i)))
+             (rest i))]
+      [_ p])))
 
-#;(define (multi-containment match? xs (until? (λ (x) #f)))
-  (match-define (list context matches)
-    (containment-comp match? xs until?))
-  (println `(multi-matches ,matches))
-  (if (empty? matches)
-      `(,(thunk xs)
-        ())
-      `(,(λ x (context x))
-        ,matches)))
 
-(define (multi-split ls lengths)
-  ; splits list ls into segments of lengths lengths
-  (unless (equal? (length ls)
-                  (apply + lengths))
-    (error "length of list doesn't partition"))
-  (define-values (actual extra)
-    (for/fold ([acc '()]
-               [ls ls])
-              ([l lengths])
-      (define-values (this those)
-        (split-at ls l))
-      (values (cons this acc) those)))
-  (reverse actual))
+(define (extract-matches pair)
+  ; recursively walk the chain of continutation-match pairs,
+  ; returning a list of all matches
+  (reverse
+   (let loop ([p pair] [acc '()])
+     (match p
+       [(cm-pair c r)
+        (loop (prompt (c 666))
+              (list* r acc))]
+       [_ acc]))))
 
 
 (define-syntax-rule (match-lambda? <pat>)
   ; converts a pattern into a predicate
   (match-lambda [<pat> #t] [_ #f]))
+
+
+
+
+#| OLD IMPLEMENTATION (uses procedures instead of continuations)
+
+   This is retained for reference.
+
+   (multi-containment match? target) returns a pair
+   of a procedure called <context> and a list of <matches>
+   such that (apply <context> <matches>) gives you back target
+
+   the general approach here is that we turn the internal pattern
+   from above into a predicate called match?, and search for match?
+   hits in target in a left-to-right preorder traversal
+
+   if the target is a hit, we return the identity function and
+   the target. if it's an atomic non-hit, we return a thunk with
+   value target and nothing. if it's a non-atomic non-hit, we
+   recursively map over it and 'horizontally compose' the child
+   procedures into a new procedure with as many holes/paramaters
+   as the sum of the children's
+
+|#
+
+#;(define/memo (multi-containment-old match? xs (until? (λ (x) #f)))
+    ; this returns a list of two elements
+    ; the first element is the multi-holed context as a fn
+    ; the second is a list of the contents of those holes
+    (cond
+      [(match? xs)
+       (list (λ (x) x) `(,xs))]
+      [(or (not (list? xs)) (until? xs))
+       (list (λ () xs) `())]
+      [else
+       (match-define `((,subcontexts ,submatches) ...)
+         (for/list ([x xs])
+           (multi-containment match? x until?)))
+       (define subcontext-arities
+         (map procedure-arity subcontexts))
+       (define (context-candidate . xs)
+         (for/list
+             ([subctx subcontexts]
+              [arg-list (multi-split xs subcontext-arities)])
+           (apply subctx arg-list)))
+       (define new-context
+         (procedure-reduce-arity
+          context-candidate
+          (apply + subcontext-arities)))
+       (define new-matches
+         (apply append submatches))
+       (list new-context
+             new-matches)]))
+
+
+#;(define/memo (first-containment-old match? xs (until? (λ (x) #f)))
+    ; this returns a list of two elements
+    ; the first element is a one-holed context as a fn
+    ; the second is a one-element list of the content of that hole
+    ; this currently is just a gloss for mult-containment
+    ; it could be implemented more efficiently separately
+    (match-define `(,context ,matches)
+      (multi-containment match? xs until?))
+    (match matches
+      [`() `(,context ,matches)]
+      [`(,a ,as ...) `(,(λ (x) (apply context x as)) (,a))]))
+
+
+#;(define (multi-split ls lengths)
+    ; splits list ls into segments of lengths lengths
+    (unless (equal? (length ls)
+                    (apply + lengths))
+      (error "length of list doesn't partition"))
+    (define-values (actual extra)
+      (for/fold ([acc '()]
+                 [ls ls])
+                ([l lengths])
+        (define-values (this those)
+          (split-at ls l))
+        (values (cons this acc) those)))
+    (reverse actual))
+
+
 
 
 ; the end
