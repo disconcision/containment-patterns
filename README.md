@@ -1,4 +1,3 @@
-# containment-patterns
 
 ⋱ CONTAINMENT PATTERNS ⋱
 =========================
