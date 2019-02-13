@@ -21,16 +21,11 @@ Technically, an n-holed context is a captured composable continuation which can 
 The pattern `(⋱ <context-name> <pattern>)` binds a procedure to `<context-name>` and a `<match>` to`<pattern>` satisfying `(equal? (<context> <matches>) target)`. `⋱+` is similar, but it binds a list of all matches instead of just the first result, and `⋱1` insists that the match should be unique.
 
 
-### ⋱ WTF is ⋱
+### ⋱ Installation and Usage Instructions
 
-To insert a `⋱` in Dr. Racket, type `\ddo` (diagonal dots) and then press `ctrl`+`\`.
-
-
-### ⋱ Installation Instructions
-
-`raco pkg install git://github.com/disconcision/containment-patterns`
-
-
+- Execute `raco pkg install git://github.com/disconcision/containment-patterns`
+- Add `(require containment-patterns)`
+- Insert a `⋱` in Dr. Racket by typing `\ddo` (diagonal dots) and then pressing `alt`+`\`
 
 
 ### ⋱ Usage Examples
