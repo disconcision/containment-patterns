@@ -2,11 +2,12 @@
 ⋱ CONTAINMENT PATTERNS ⋱
 =========================
 
+![Tangerine Nightmare](screenshots/screenshot.png)
+
+
 ### ⋱ Capture Contexts with Composable Continations
 
 This library implements several match-expanders which can be used anywhere racket/match pattern-matching is available. `⋱` , `⋱+` , and `⋱1`  are match-expanders which implement containment patterns. These descend into s-expressions to capture arbitarily deep matches and their multi-holed contexts.
-
-![Tangerine Nightmare](screenshots/screenshot.png)
 
 
 ### ⋱ Why
@@ -16,9 +17,11 @@ I implemented containment patterns to write concise updates on nested structures
 
 ### ⋱ How
 
-Technically: an *n-holed context* is a captured composable continuation which can be used in a pattern template as a normal n-ary procedure. These continuations are captured as the pattern-matcher left-to-right preorder-traverses the target looking for matches. While the captured context is really just a function which can be applied normally, you can (optionally) use ⋱ in the template as well for symmetry (see example below).
+Technically: an *n-holed context* is a captured composable continuation which can be used in a pattern template as a normal n-ary procedure. These continuations are captured as the pattern-matcher left-to-right preorder-traverses the target looking for matches. 
 
 Explictly: The pattern `(⋱ <context-name> <pattern>)` binds a procedure to `<context-name>` and a `<match>` to `<pattern>` satisfying `(equal? (<context> <matches>) target)`. `⋱+` is similar, but it binds a list of all matches instead of just the first result, and `⋱1` insists that the match should be unique.
+
+Caveat: If you're using any matchers which have side-effects, note that the inner pattern is evaluated twice for each successful match.
 
 
 ### ⋱ Installation and Usage Instructions
