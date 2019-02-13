@@ -2,15 +2,17 @@
 (require containment-patterns
          rackunit)
 
-; seemlessly extract a 🍊 from
-; a deeply-nested situation 🔥
-(check-equal?
- (match `((🔥 🔥
-             (🔥 (4 🍆)))
-          (🔥 (🔥
-              (1 🍊)) 🔥 🔥)
-          (2 🍐) (🔥))
-   [(⋱ `(1 ,a)) a])
- `🍊)
+(define situation
+  `((🔥 🔥
+       (🔥 (4 🍆)))
+    (🔥 (🔥
+        (1 🍊)) 🔥 🔥)
+    (2 🍐) (🔥)))
 
+(check-equal?
+ ; seamlessly extract a 🍊 from
+ ; a deeply-nested situation 🔥
+ (match situation
+   [(⋱ `(1 ,target)) target])
+ `🍊)
 
