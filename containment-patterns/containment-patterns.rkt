@@ -328,8 +328,20 @@
   )
 
 
+
 (require racket/control)
 (define-struct zipper (a-continuation a-match))
+
+#| CORE IMPLEMENTATION
+
+   Credit to oleg-at-pobox.com for the method of abstracting
+   the traversal from the zipper:
+   - http://okmij.org/ftp/Scheme/zipper-in-scheme.txt
+
+   And to Gary Baumgartner for help with the earlier call/comp
+   implementation.
+
+|#
 
 (define (first-containment match? xs (until? (λ (x) #f)))
   ; this returns a list of two elements
@@ -340,7 +352,7 @@
   (if (empty? matches)
       `(,(thunk xs)
         ())
-      `(,(λ (x) (apply-cont context (list* x (rest matches))))
+      `(,(λ (x) (fill-holes context (list* x (rest matches))))
         (,(first matches)))))
 
 
@@ -352,13 +364,10 @@
   (define matches (extract-matches context))
   (if (empty? matches)
       `(,(thunk xs) ())
-      `(,(procedure-reduce-arity (λ x (apply-cont context x))
+      `(,(procedure-reduce-arity (λ x (fill-holes context x))
                                  (length matches))
         ,matches)))
 
-
-; ref : gary baumgartner
-; ref : http://okmij.org/ftp/Scheme/zipper-in-scheme.txt
 
 (define (sexp-traversal x until? handler?)
   ; depth-first left-to-right s-expression traversal
@@ -370,41 +379,45 @@
 
 
 (define (containment-comp match? xs (until? (λ (x) #f)))
-  ; delimit a continuation, then descend into xs looking for matches.
-  ; when a match is found, abort, returning a pair of the match found
-  ; and the continuation up to the original delimiter. when this
-  ; the returned continuation is invoked, the traversal will continue.
-  (reset (sexp-traversal xs until?
-                    (λ (x) (and (match? x)
-                                (shift context (zipper context x)))))))
+  ; delimit the continuation and descend into xs looking for matches.
+  ; when a match is found, reset, returning a zipper - a pair of
+  ; the match found and the continuation up to the original delimiter.
+  ; when the returned continuation is invoked the traversal continues.
+  (reset (sexp-traversal
+          xs until?
+          (λ (x) (and (match? x)
+                      (shift context (zipper context x)))))))
 
 
 (define (containment-gen traversal match? xs)
-  ; traverse xs with the provided traversal function
-  (reset (traversal xs (λ (x) (and (match? x)
-                                (shift context (zipper context x)))))))
+  ; returns a zipper which generically traverses through xs
+  ; and which which is unzipped up to the first match
+  (reset (traversal
+          xs
+          (λ (x) (and (match? x)
+                      (shift context (zipper context x)))))))
 
 
-(define (apply-cont pair inserts)
-  ; recursively walk the chain of continuation-match pairs,
-  ; replacing the holes left by the matches with the inserts
-  (let loop ([p pair] [i inserts])
-    (match p
-      [(zipper c r)
-       (loop (prompt (c (first i)))
+(define (fill-holes zip inserts)
+  ; follow the multi-zipper filling holes with inserts
+  (let loop ([z zip]
+             [i inserts])
+    (match z
+      [(zipper context _)
+       (loop (reset (context (first i)))
              (rest i))]
-      [_ p])))
+      [_ z])))
 
 
-(define (extract-matches pair)
-  ; recursively walk the chain of continutation-match pairs,
-  ; returning a list of all matches
+(define (extract-matches zip)
+  ; follow the multi-zipper returning the contents of all holes
   (reverse
-   (let loop ([p pair] [acc '()])
-     (match p
-       [(zipper c r)
-        (loop (prompt (c 666))
-              (list* r acc))]
+   (let loop ([z zip]
+              [acc '()])
+     (match z
+       [(zipper context content)
+        (loop (reset (context 666))
+              (list* content acc))]
        [_ acc]))))
 
 
@@ -422,7 +435,7 @@
         (cond
           [(until? x) x]
           [(match? x) ; equivalently: (shift hole (cm-pair hole x))
-                      (call/comp (λ (hole) (abort (cm-pair hole x))))]
+           (call/comp (λ (hole) (abort (cm-pair hole x))))]
           [(list? x) (map rec x)]
           [else x]))))
 
