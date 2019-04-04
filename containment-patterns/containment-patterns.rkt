@@ -1,8 +1,7 @@
 #lang racket
 
-; andrew blinn 2018
+; andrew blinn 2019
 
-#; (require memoize)
 (provide ⋱ ⋱1 ⋱+)
 
 
@@ -112,7 +111,6 @@
                 '(0 0 ((▹▹ 7) 0 0))))
 
 
-
 (define-match-expander ⋱
   ; containment pattern (returns first match)
   (λ (stx)
@@ -209,7 +207,7 @@
                 '(0 1 (0 1 (1 0)) (▹ 0) 1))
 
 
-  ; toy scope-aware subtitution
+  ; toy scope-aware subtitution (until syntax)
   (check-equal? (match `(let ([w 1])
                           z
                           (let ([z 2])
@@ -226,8 +224,27 @@
                    (let ([y 3])
                      new-name)))
 
-  ; stepping / small-step interpretation:
-  ; see choice-stepper on my gitbuh
+  
+  ; toy scope-aware subtitution (generalized traversal syntax)
+  (check-equal?
+   (parameterize ([⋱traversal
+                   (sexp-traversal
+                    (match-lambda? `(let ([z ,_]) ,_ ...)))])
+     (match `(let ([w 1])
+               z
+               (let ([z 2])
+                 z)
+               (let ([y 3])
+                 z))
+       [(⋱+ c 
+            'z)
+        (⋱+ c (make-list 2 'new-name))]))
+   `(let ([w 1])
+      new-name
+      (let ([z 2])
+        z)
+      (let ([y 3])
+        new-name)))
 
   )
 
@@ -244,9 +261,9 @@
           `(,context-id ,<internal-pat>))]
       [(⋱+ context-id (until <cond-pat>) <internal-pat>)
        #'(app
-          (λ (x) (multi-containment
-                  (match-lambda? <internal-pat>) x
-                  (match-lambda? <cond-pat>)))
+          (curry multi-containment-until
+                 (match-lambda? <internal-pat>)
+                 (match-lambda? <cond-pat>))
           `(,context-id (,<internal-pat> (... ...))))]
       [(⋱+ context-id <internal-pat>)
        #'(app
@@ -273,17 +290,12 @@
    (first-containment match? target) works similarly, except
    that it returns at most one match
 
-   both of the above take an additional optional parameter, until?,
-   which is a predicate which, when triggered, ends that branch
-   of the traversal
-
    CONTEXTS VIA COMPOSABLE CONTINUATIONS
 
    the general approach here is that we turn the internal pattern
    from above into a predicate called match?, and search for match?
    hits in target in a left-to-right preorder traversal. the
-   traversal bottoms out both at atoms, and at lists which satisfy
-   the until? predicate
+   traversal bottoms out both at atoms.
 
    we return the 'context' around these matches within the target
    by returning a delimited continutation which encompasses the
@@ -307,13 +319,6 @@
                  3 4 5 6)
                 '(0 3 (0 4 (5 0)) 0 6))
 
-  (check-equal? ((first (multi-containment
-                         (curry equal? 1)
-                         '(0 1 (0 1 (1 0)) 0 1)
-                         (curry equal? '(1 0))))
-                 3 4 5)
-                '(0 3 (0 4 (1 0)) 0 5))
-
   (check-equal? ((first (first-containment
                          (curry equal? 1)
                          '(0 0 1 0 1)))
@@ -334,72 +339,93 @@
 
 #| CORE IMPLEMENTATION
 
-   Credit to oleg-at-pobox.com for the method of abstracting
-   the traversal from the zipper:
-   - http://okmij.org/ftp/Scheme/zipper-in-scheme.txt
+   Thanks to oleg-at-pobox.com for the method of abstracting
+   the traversal from the zipper (1), to Gary Baumgartner for
+   help with the earlier call/comp implementation, and
+   Sam Tobin-Hochstadt with the original procedure version.
 
-   And to Gary Baumgartner for help with the earlier call/comp
-   implementation.
+   (1) http://okmij.org/ftp/Scheme/zipper-in-scheme.txt
 
 |#
 
-(define (first-containment match? xs (until? (λ (x) #f)))
-  ; this returns a list of two elements
-  ; the first element is a one-holed context as a fn
-  ; the second is a one-element list of the content of that hole
-  (define context (containment-comp match? xs until?))
-  (define matches (extract-matches context))
-  (if (empty? matches)
-      `(,(thunk xs)
-        ())
-      `(,(λ (x) (fill-holes context (list* x (rest matches))))
-        (,(first matches)))))
 
-
-(define (multi-containment match? xs (until? (λ (x) #f)))
-  ; this returns a list of two elements
-  ; the first element is the multi-holed context as a fn
-  ; the second is a list of the contents of those holes
-  (define context (containment-comp match? xs until?))
-  (define matches (extract-matches context))
-  (if (empty? matches)
-      `(,(thunk xs) ())
-      `(,(procedure-reduce-arity (λ x (fill-holes context x))
-                                 (length matches))
-        ,matches)))
-
-
-(define (sexp-traversal x until? handler?)
+(define ((sexp-traversal until?) handler? x)
   ; depth-first left-to-right s-expression traversal
   (cond
     [(until? x) x]
     [(handler? x) => identity]
-    [(list? x) (map (curryr sexp-traversal until? handler?) x)]
+    [(list? x) (map (curry (sexp-traversal until?) handler?) x)]
     [else x]))
 
 
-(define (containment-comp match? xs (until? (λ (x) #f)))
-  ; delimit the continuation and descend into xs looking for matches.
+#;(define (hash-traversal handler? x)
+    (cond
+      [(handler? x) => identity]
+      [(hash? x)
+       (for/hash ([(k v) (in-hash x)])
+         (values k (hash-traversal handler? v)))]
+      [else x]))
+#;(parameterize ([⋱traversal hash-traversal])
+    (match (hash 1 (hash 11 'b
+                         12 'b)
+                 2 (hash 21 'b
+                         22 (hash 221 'smol-a
+                                  222 'b))
+                 3 'b)
+      [(⋱ ctx 'smol-a) (⋱ ctx 'swole-A)]))
+
+
+(define ⋱traversal (make-parameter (sexp-traversal (const #f))))
+
+
+(define (first-containment match? xs)
+  ; this returns a list of two elements
+  ; the first element is a one-holed context as a fn
+  ; the second is a one-element list of the content of that hole
+  (define context (unzip (⋱traversal) match? xs))
+  (define matches (extract-matches context))
+  (if (empty? matches)
+      `(,(thunk xs) ())
+      `(,(λ (x) (fill-holes context (list* x (rest matches))))
+        (,(first matches)))))
+
+
+(define (multi-containment match? xs)
+  ; this returns a list of two elements
+  ; the first element is the multi-holed context as a fn
+  ; the second is a list of the contents of those holes
+  (define context (unzip (⋱traversal) match? xs))
+  (define matches (extract-matches context))
+  (if (empty? matches)
+      `(,(thunk xs) ())
+      `(,(procedure-reduce-arity
+          (λ x (fill-holes context x))
+          (length matches))
+        ,matches)))
+
+
+(define (multi-containment-until match? until? xs)
+  ; legacy until syntax
+  (parameterize ([⋱traversal (sexp-traversal until?)])
+    (multi-containment match? xs)))
+
+
+(define (unzip traversal match? xs)
+  ; returns a zipper which generically traverses through xs
+  ; which which is unzipped up to the first match
+  
+  ; delimits the continuation and descend into xs looking for matches.
   ; when a match is found, reset, returning a zipper - a pair of
   ; the match found and the continuation up to the original delimiter.
   ; when the returned continuation is invoked the traversal continues.
-  (reset (sexp-traversal
-          xs until?
-          (λ (x) (and (match? x)
-                      (shift context (zipper context x)))))))
-
-
-(define (containment-gen traversal match? xs)
-  ; returns a zipper which generically traverses through xs
-  ; and which which is unzipped up to the first match
   (reset (traversal
-          xs
           (λ (x) (and (match? x)
-                      (shift context (zipper context x)))))))
+                      (shift context (zipper context x))))
+          xs)))
 
 
 (define (fill-holes zip inserts)
-  ; follow the multi-zipper filling holes with inserts
+  ; zip the zipper filling holes with inserts
   (let loop ([z zip]
              [i inserts])
     (match z
@@ -410,7 +436,7 @@
 
 
 (define (extract-matches zip)
-  ; follow the multi-zipper returning the contents of all holes
+  ; zip the zipper returning the contents of all holes
   (reverse
    (let loop ([z zip]
               [acc '()])
@@ -461,6 +487,8 @@
    as the sum of the children's
 
 |#
+
+#; (require memoize)
 
 #;(define/memo (multi-containment-old match? xs (until? (λ (x) #f)))
     ; this returns a list of two elements

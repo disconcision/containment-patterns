@@ -2,16 +2,17 @@
 
 @; adapted from dave herman's memoize docs
 
-@(require (for-label containment-patterns)
-          (for-label memoize) @; remove when done
-          )
+@(require (for-label containment-patterns))
+
 @begin[(require scribble/manual)
-       (require scribble/eval)
+       (require scribble/example)
        (require scribble/base)]
 
 @(define the-eval
    (let ([the-eval (make-base-eval)])
-     (the-eval '(require racket/match "main.rkt"))
+     (the-eval '(require racket/match
+                         racket/list
+                         "main.rkt"))
      the-eval))
 
 @title[#:tag "top"]{Containment Patterns: Capture contexts in s-expressions}
@@ -19,35 +20,126 @@
 @author[@author+email["Andrew Blinn" "racket@andrewblinn.com"]]
 
 
-@; by Andrew Blinn (@tt{dherman at ccs dot neu dot edu})
-
-DOCUMENT UNDER CONSTRUCTION
 
 Containment-patterns implements several match-expanders which can be used anywhere
 @racket[racket/match] pattern-matching is available. ⋱ , ⋱+ , and ⋱1 descend
 into s-expressions to capture arbitarily deep matches and their multi-holed contexts.
 
-Insert a `⋱` in Dr. Racket by typing `\ddo` (diagonal dots) and then pressing `alt`+`\`
+Insert a ⋱ in Dr. Racket by typing \ddo (diagonal dots) and then pressing alt+\
 
 @table-of-contents[]
 
 @defmodule[containment-patterns]{}
 
-@section[#:tag "intro"]{Tangerine Nightmare}
+@section[#:tag "examples"]{An example}
+
+@subsection[#:tag "nightmare"]{Tangerine Nightmare}
 
 Seamlessly extract a 🍊 from a deeply-nested situation 🔥.
 
-@defexamples[#:eval the-eval
-             (define situation
-  `((🔥 🔥
-       (🔥 (4 🍆)))
-    (🔥 (🔥
-        (1 🍊)) 🔥 🔥)
-    (2 🍐) (🔥)))
-              (match situation
-   [(⋱ `(1 ,target)) target])]
+@examples[#:label #f
+          #:eval the-eval
+          (define situation
+               `((🔥 🔥
+                    (🔥 (4 🍆)))
+                 (🔥 (🔥
+                     (1 🍊)) 🔥 🔥)
+                 (2 🍐) (🔥)))
+           (match situation
+               [(⋱ `(1 ,target)) target])]
 
 @subsection[#:tag "examples"]{More examples}
+
+@examples[#:label "1. Check if an item is contained in a nested list:"
+          #:eval the-eval
+          (match `(0 (0 1) 2 3)
+            [(⋱ 1) #t])]
+
+@examples[#:label "2. Extract data from a nested context:"
+          #:eval the-eval
+          (match `(0 (1 zap) 2 3)
+            [(⋱ `(1 ,a)) a])]
+
+
+@examples[#:label "3. Make an update in a nested context:"
+          #:eval the-eval
+          (match '(0 0 (0 (0 0 (▹ 1)) 0 0))
+            [(⋱ context `(▹ ,a))
+             (⋱ context `(▹ ,(add1 a)))])]
+
+@examples[#:label "4. Make multiple substitutions.
+                   Note how ⋱+ is optional in the template; a context is just a function:"
+          #:eval the-eval
+          (match '(0 1 (0 1 (1 0)) 0 1)
+            [(⋱+ c 1)
+             (c 3 4 5 6)])]
+
+@examples[#:label "5. Move a cursor ▹ through a traversal in a nested list of 0s and 1s:"
+          #:eval the-eval
+          (match '(0 1 (0 1 (1 (▹ 0))) 0 1)
+            [(⋱+ c (and a (or `(▹ ,_) (? number?))))
+             (⋱+ c (match a [`(,x ... (▹ ,y) ,z ,w ...)
+                             `(,@x ,y (▹ ,z) ,@w)]))])]
+
+
+
+
+             
+
+@section[#:tag "patterns"]{Pattern Forms}
+
+
+@defform*[((⋱ <pattern>)
+           (⋱ <context-name> <pattern>))]{
+ Traverses a target s-expression left-to-right and depth-first
+ until a match to @racket[<pattern>] is found, then hands off control to <pattern>.
+ Optionally, the context surrounding the match is captured as a
+ unary procedure called <context-name> satisfying
+ @racket[(equal? (<context> the-match) orginal-sexpr)].
+ In a template @racket[(⋱ <context-name> new-content)] is
+ just a gloss for @racket[(<context-name> new-content)].}
+
+@defform[#:id ⋱1 (⋱1 <context-name> <pattern>)]{
+ Same as @racket[⋱] except it enforces that the match must be unique.}
+
+@defform*[((⋱+ <context-name> <pattern>)
+           (⋱+ <context-name> (until <stop-pattern>) <pattern>)
+           (⋱+ <context-name> (capture-when <pattern>) <results-pattern>))]{
+ Similar to @racket[⋱] except all matches are captured as an n)-element list, and
+ @racket[<context-name>] is bound to an n-ary procedure representing
+ an n-holed context.
+
+ If the @racket[until] subform is included, the traversal neither matches nor descent into values
+matching the @racket[<stop-pattern>].
+
+@examples[#:label "Example: Toy scope-aware subtitution:"
+          #:eval the-eval
+          (match `(let ([w 1])
+                    z
+                    (let ([z 2]) z)
+                    (let ([y 3]) z))
+                  [(⋱+ c (until `(let ([z ,_]) ,_ ...))
+                       (and x 'z))
+                   (⋱+ c (make-list (length x) 'new-name))])]
+
+If the @racket[capture-when] subform is included, results meeting @racket[<pattern>]
+are captured as a list, which can then be matched against as a whole by
+@racket[<results-pattern>]. Note that this is an experimental feature which may be
+changed or removed in future versions.
+
+@examples[#:label "Example: moving a cursor"
+          #:eval the-eval
+          (match '(0 1 (0 1 (1 (▹ 0))) 0 1)
+                  [(⋱+ c (capture-when (or `(▹ ,_) (? number?)))
+                       `(,x ... (▹ ,y) ,z ,w ...))
+                   (⋱+ c 
+                       `(,@x ,y (▹ ,z) ,@w))])]
+
+Contrast this example to example 5 above; this variant is essentially
+a gloss for nested matches.
+}
+
+
 
 @section[#:tag "why"]{Why}
 
@@ -65,83 +157,23 @@ can be called in a pattern template as a normal n-ary procedure. These continuat
 are captured as the pattern-matcher left-to-right preorder-traverses the target
 looking for matches. 
 
+@subsection[#:tag "gotchas"]{Gotchas}
+
+Caveat: If you're using any matchers which have side-effects,
+note that the inner pattern is evaluated twice for each successful match.
 
 
-`⋱+` is similar, but it binds a list of all matches instead of just the first result
+@section[#:tag "advanced"]{Advanced use: Traverse arbitrary structures}
 
-and `⋱1` insists that the match should be unique.
-
-Caveat: If you're using any matchers which have side-effects, note that the inner pattern is evaluated twice for each successful match.
-
-### ⋱ Usage Examples
-
-See the tests in main.rkt for more examples and additional *secret bonus features* (which may not yet have found their final forms):
-
-1. Check if an item is contained in a nested list:
-
-```racket
-(check-true
-  (match `(0 (0 1) 2 3)
-    [(⋱ 1) #t]))
-```
-
-2. Extracting data from a nested context:
-```racket
-(check-equal?
-  (match `(0 (1 zap) 2 3)
-    [(⋱ `(1 ,a)) a])
-  `zap)
-```                
-
-3. Making an update in a nested context:
-
-```racket
-(check-equal?
-  (match '(0 0 (0 (0 0 (▹ 1)) 0 0))
-    [(⋱ context `(▹ ,a))
-     (⋱ context `(▹ ,(add1 a))])
-  '(0 0 (0 (0 0 (▹ 2)) 0 0))
-```
-
-4. Serial substitutions:
-(note how `⋱+` is optional in the template; a context is just a function)
-
-```racket
-(match '(0 1 (0 1 (1 0)) 0 1)
-  [(⋱+ c 1)
-   (c 3 4 5 6)])
-```
-
-5. Moving a cursor `▹` through a traversal in a nested list of `0`s and `1`s:
-
-```racket
-(check-equal?
-  (match '(0 1 (0 1 (1 (▹ 0))) 0 1)
-    [(⋱+ c (and a (or `(▹ ,_) (? number?))))
-     (⋱+ c (match a [`(,x ... (▹ ,y) ,z ,w ...)
-                      `(,SPLICEx ,y (▹ ,z) ,SPLICEw)]))])
-  '(0 1 (0 1 (1 0)) (▹ 0) 1))
-
-; REPLACE SPLICE ABOVE WITH AT-SYMBOL WHEN IN SITU
-
-@section[#:tag "patterns"]{Pattern Forms}
-
-
-@defform*[((⋱ <pattern>)
-           (⋱ <context-name> <pattern>))]{
-Traverses a target s-expression left-to-right and depth-first
-until a match to @racket[<pattern>] is found, then hands off control to <pattern>.
-Optionally, the context surrounding the match is captured as a
-unary procedure called <context-name> satisfying
-(@scheme[equal?] (<context> the-match) orginal-sexpr).}
-
-@defform[#:id ⋱1 (⋱1 <context-name> <pattern>)]{
-Same as @racket[⋱] except it enforces that the match must be unique.}
-
-@defform[#:id ⋱+ (⋱+ <context-name> <pattern>)]{
-}
-
-
+@examples[#:label "Example: Toy scope-aware subtitution:"
+          #:eval the-eval
+          (match `(let ([w 1])
+                    z
+                    (let ([z 2]) z)
+                    (let ([y 3]) z))
+                  [(⋱+ c (until `(let ([z ,_]) ,_ ...))
+                       (and x 'z))
+                   (⋱+ c (make-list (length x) 'new-name))])]
 
 
 @; @section[#:tag "forms"]{Forms}
