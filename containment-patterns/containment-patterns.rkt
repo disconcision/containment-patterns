@@ -275,6 +275,32 @@
       [(⋱+ context-id internal-template)
        #'(apply context-id internal-template)])))
 
+(define-match-expander ⋱++
+  ; actual template splice version
+  (λ (stx)
+    (syntax-case stx (capture-when)
+      [(⋱++ context-id (capture-when <cond-pat>) <internal-pat>)
+       #'(app
+          (curry multi-containment
+                 (match-lambda? <cond-pat>))
+          `(,context-id ,<internal-pat>))]
+      [(⋱++ context-id (until <cond-pat>) <internal-pat>)
+       #'(app
+          (curry multi-containment-until
+                 (match-lambda? <internal-pat>)
+                 (match-lambda? <cond-pat>))
+          `(,context-id (,<internal-pat> (... ...))))]
+      [(⋱++ context-id <internal-pat>)
+       #'(app
+          (curry multi-containment
+                 (match-lambda? <internal-pat>))
+          `(,context-id (,<internal-pat> (... ...))))]))
+  (λ (stx)
+    (syntax-case stx ()
+      [(⋱++ context-id [free ...] internal-template)
+       #'(apply context-id
+                (map (λ (free ...) internal-template)
+                     free ...))])))
 
 
 
